@@ -1,1 +1,31 @@
-<h1>Hello</h1>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CSV Contents</title>
+</head>
+<body>
+    <h1>CSV Contents</h1>
+    <table border="1">
+        <!-- Dynamically generate table headers based on DataFrame column names -->
+        <tr>
+            {% for column in data.columns %}
+            <th>{{ column }}</th>
+            {% endfor %}
+        </tr>
+        <!-- Iterate over each row in your DataFrame -->
+        {% for row in data.itertuples() %}
+        <tr>
+            <!-- Dynamically generate table cells for each column in the row -->
+            {% for value in row[1:] %} <!-- Skipping index (row[0]) -->
+            <td>{{ value }}</td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+    <h1>Heatmap Visualization</h1>
+    <!-- Embed the heatmap image -->
+    <img src="{{ url_for('static', filename='heatmap.png') }}" alt="Heatmap of Interval Name by Segments">
+
+</body>
+</html>
