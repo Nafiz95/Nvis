@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NFER VIZ</title>
+    <style>
+        #heatmap-container {
+            overflow-x: auto; /* Enable horizontal scrolling */
+            width: 100%; /* Full width of the viewport */
+            max-width: 960px; /* Maximum width for the container to trigger scrolling */
+            border: 1px solid #ccc; /* Visual border */
+            margin: 20px auto; /* Centering the container */
+        }
+        svg {
+            display: block; /* Block display for SVG */
+        }
+        .grid line {
+            stroke: lightgrey;
+            stroke-opacity: 0.7;
+            shape-rendering: crispEdges;
+        }
+        .grid path {
+            stroke-width: 0;
+        }
+        #tooltip {
+            position: absolute;
+            opacity: 0;
+            background: #fff;
+            border: 1px solid #000;
+            padding: 10px;
+            border-radius: 3px;
+            pointer-events: none; /* Allows mouse events to pass through */
+            transition: opacity 0.2s;
+        }
+    </style>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+</head>
+<body>
+    <div id="heatmap-container">
+        <div id="heatmap"></div>
+    </div>
+    <div id="tooltip"></div> <!-- Tooltip div -->
+    
+    <!-- Initialization of data variable from Flask -->
+    <script>
+        const rawData = {{ data|tojson }};
+    </script>
+    <script src="/static/heatmap.js"></script>
+</body>
+</html>
