@@ -3,13 +3,23 @@
 <head>
     <title>NFER VIZ</title>
     <style>
-        #heatmap-container {
-            overflow-x: auto; /* Enable horizontal scrolling */
-            width: 100%; /* Full width of the viewport */
-            max-width: 960px; /* Maximum width for the container to trigger scrolling */
-            border: 1px solid #ccc; /* Visual border */
-            margin: 20px auto; /* Centering the container */
+         .flex-container {
+            display: flex; /* Using flexbox to align children side by side */
+            width: 100%; /* Full width to contain both children */
         }
+        #heatmap-container {
+            flex-grow: 1; /* Allows the heatmap container to grow and fill space */
+            overflow-x: auto; /* Enable horizontal scrolling */
+            border: 1px solid #ccc; /* Visual border */
+            margin: 20px; /* Space around the container */
+        }
+        #info-container {
+            width: 500px; /* Fixed width for the info container */
+            border: 1px solid #ccc; /* Visual border */
+            padding: 20px; /* Padding inside the container */
+            margin: 20px; /* Space around the container */
+        }
+        
         svg {
             display: block; /* Block display for SVG */
         }
@@ -31,19 +41,138 @@
             pointer-events: none; /* Allows mouse events to pass through */
             transition: opacity 0.2s;
         }
+        #loader {
+            position: absolute; /* Absolute position to overlay */
+            top: 50%; /* Center vertically */
+            left: 50%; /* Center horizontally */
+            transform: translate(-50%, -50%); /* Translate to center */
+            border: 16px solid #f3f3f3; /* Light grey border */
+            border-top: 16px solid #3498db; /* Blue border */
+            border-radius: 50%; /* Rounded border */
+            width: 120px; /* Loader width */
+            height: 120px; /* Loader height */
+            animation: spin 2s linear infinite; /* Spinning animation */
+            display: none; /* Hidden by default */
+        }
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
     </style>
     <script src="https://d3js.org/d3.v6.min.js"></script>
 </head>
 <body>
-    <div id="heatmap-container">
-        <div id="heatmap"></div>
+    <div class="flex-container">
+        <div id="heatmap-container">
+            <div id="heatmap"></div>
+            <div id="loader"></div>
+        </div>
+        <div id="info-container">
+            Click on a heatmap cell to see the details here.
+        </div>
     </div>
     <div id="tooltip"></div> <!-- Tooltip div -->
     
     <!-- Initialization of data variable from Flask -->
     <script>
-        const rawData = {{ data|tojson }};
+        document.addEventListener("DOMContentLoaded", () => {
+            const loader = document.getElementById('loader');
+            const heatmapContainer = document.getElementById('heatmap-container');
+
+            // Show loader
+            loader.style.display = 'block';
+            fetch('/data')
+            .then(response => response.json())
+            .then(data => {
+                const margin = { top: 30, right: 20, bottom: 100, left: 200 },
+                    height = 600 - margin.top - margin.bottom;
+
+                function drawHeatmap(data) {
+                    const container = document.getElementById('heatmap-container');
+                    let containerWidth = container.clientWidth;
+                    
+                    const timeExtent = d3.extent([...data.map(d => d.segment_start), ...data.map(d => d.segment_end)]);
+                    const widthMultiplier = 10;
+                    const timeScale = d3.scaleLinear()
+                        .domain(timeExtent)
+                        .range([0, (containerWidth - margin.left - margin.right) * widthMultiplier]);
+
+                    d3.select("#heatmap svg").remove();
+
+                    const svgWidth = Math.max(containerWidth, timeScale(timeExtent[1]) + margin.left + margin.right);
+                    const svg = d3.select("#heatmap").append("svg")
+                        .attr("width", svgWidth)
+                        .attr("height", height + margin.top + margin.bottom)
+                        .append("g")
+                        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                    const yScale = d3.scaleBand()
+                        .domain(data.map(d => d.interval_name))
+                        .range([height, 0])
+                        .padding(0.1);
+
+                    const colorScale = d3.scaleSequential()
+                        .interpolator(d3.interpolateGreens)
+                        .domain([0, d3.max(data, d => d.value)]);
+                    
+                    // Tooltip div selection
+                    const tooltip = d3.select("#tooltip");
+
+                    svg.selectAll("rect")
+                        .data(data)
+                        .enter().append("rect")
+                        .attr("x", d => timeScale(d.segment_start))
+                        .attr("width", d => timeScale(d.segment_end) - timeScale(d.segment_start))
+                        .attr("y", d => yScale(d.interval_name))
+                        .attr("height", yScale.bandwidth())
+                        .style("fill", d => colorScale(d.value))
+                        .on("mouseover", function(event, d) {
+                            tooltip.transition()
+                                .duration(200)
+                                .style("opacity", 1);
+                            tooltip.html(`Interval: ${d.interval_name}<br>Count: ${d.value}`)
+                                .style("left", `${event.pageX + 10}px`)
+                                .style("top", `${event.pageY + 10}px`);
+                            d3.select(this)
+                            .transition()
+                            .duration(100)
+                            .style("opacity", 0.8);
+                        })
+                        .on("mouseout", function() {
+                            tooltip.transition()
+                                .duration(500)
+                                .style("opacity", 0);
+                            d3.select(this)
+                            .transition()
+                            .duration(100)
+                            .style("opacity", 1);
+                        })
+                        .on("click", function(event, d) {
+                            console.log("Clicked data:", d);
+                            const infoContainer = document.getElementById('info-container');
+                            infoContainer.innerHTML = `<strong>Interval:</strong> ${d.interval_name}<br>
+                                                    <strong>Segment Start:</strong> ${d.segment_start}<br>
+                                                    <strong>Segment End:</strong> ${d.segment_end}<br>
+                                                    <strong>Value:</strong> ${d.value}<br>
+                                                    <strong>Keys:</strong> ${d.keys.join(", ")}<br>
+                                                    <strong>Values:</strong> ${d.values.join(", ")}`;
+                        });
+
+                    const xAxis = svg.append("g")
+                        .attr("transform", `translate(0,${height})`)
+                        .call(d3.axisBottom(timeScale)
+                        // .tickFormat(d3.timeFormat("%Y-%m-%d %H:%M:%S"))
+                        );
+
+                    svg.append("g")
+                        .call(d3.axisLeft(yScale));
+                }
+
+                drawHeatmap(data);
+                loader.style.display = 'none';
+                })
+        });
     </script>
-    <script src="/static/heatmap.js"></script>
+    <!-- <script src="/static/heatmap.js"></script> -->
 </body>
 </html>
