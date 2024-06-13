@@ -5,46 +5,31 @@ from aiohttp import web
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+import concurrent.futures
+from collections import defaultdict
 
 # Create sample data
 def process_kv(l):
     return l.split(',')
 
-def get_data(request):
-    column_names = ['interval_name', 'interval_begin', 'interval_end', 'keys', 'values']
+def process_chunk(chunk, segments):
+    chunk_names_to_segments = defaultdict(list)
+    data_for_d3_chunk = []
+    begin_array = chunk['interval_begin'].values
+    end_array = chunk['interval_end'].values
+    name_array = chunk['interval_name'].values
+    keys_array = chunk['keys'].values
+    values_array = chunk['values'].values
 
-    # Read the file using read_csv with pipe '|' as the separator
-    df = pd.read_csv('lanl_intervals', sep='|', header=None, names=column_names)
-    interval_points = np.sort(np.unique(df[['interval_begin', 'interval_end']].values.ravel()))
-
-    # Create an efficient mapping from interval points to index to speed up searches
-    point_to_index = {point: index for index, point in enumerate(interval_points)}
-
-    # Initialize an empty list to store data for each interval_name efficiently
-    from collections import defaultdict
-    names_to_segments = defaultdict(list)
-
-    # Use numpy arrays for efficient computation
-    begin_array = df['interval_begin'].values
-    end_array = df['interval_end'].values
-    name_array = df['interval_name'].values
-    keys_array = df['keys'].values
-    values_array = df['values'].values
-
-    # Pre-create segments based on interval points (only need to do this once)
-    segments = list(zip(interval_points[:-1], interval_points[1:]))
-
-                
-    for i in range(len(df)):
+    for i in range(len(chunk)):
         begin, end, name, key, value = begin_array[i], end_array[i], name_array[i], keys_array[i], values_array[i]
         for start, finish in segments:
             if begin <= finish - 1 and end >= start:
                 segment_str = f"{start}-{finish}"
-                # Append a tuple with the segment, keys, and value
-                names_to_segments[name].append((segment_str, key, value))
-
-    data_for_d3 = []
-    for interval_name, segments_info in names_to_segments.items():
+                chunk_names_to_segments[name].append((segment_str, key, value))
+    
+    # Process segments to create data_for_d3
+    for interval_name, segments_info in chunk_names_to_segments.items():
         for segment_info in segments_info:
             segment, key, value = segment_info
             start, end = segment.split('-')
@@ -58,18 +43,54 @@ def get_data(request):
             segment_values = [v for v in segment_values if not (isinstance(v, float) and np.isnan(v))]
             segment_keys = segment_keys if segment_keys else [0]
             segment_values = segment_values if segment_values else [0]
-            
+
             keys_string = ','.join(str(k) for k in segment_keys) if segment_keys else '0'
             values_string = ','.join(str(v) for v in segment_values) if segment_values else '0'
-            # Append to data_for_d3
-            data_for_d3.append({
+            
+            data_for_d3_chunk.append({
                 "interval_name": interval_name,
                 "segment_start": start,
                 "segment_end": end,
-                "value": len(segment_keys),  # Summing values if multiple overlap, adjust as needed
+                "value": len(segment_keys),
                 "keys": keys_string,
                 "values": values_string
             })
+
+    return data_for_d3_chunk
+
+def merge_dicts(dicts):
+    merged = []
+    for d in dicts:
+        merged.extend(d)
+    return merged
+
+
+def get_data(request):
+    column_names = ['interval_name', 'interval_begin', 'interval_end', 'keys', 'values']
+
+    # Read the file using read_csv with pipe '|' as the separator
+    df = pd.read_csv('lanl_intervals', sep='|', header=None, names=column_names)
+    interval_points = np.sort(np.unique(df[['interval_begin', 'interval_end']].values.ravel()))
+
+    # Create an efficient mapping from interval points to index to speed up searches
+    point_to_index = {point: index for index, point in enumerate(interval_points)}
+
+    # Pre-create segments based on interval points (only need to do this once)
+    segments = list(zip(interval_points[:-1], interval_points[1:]))
+
+    # Split the DataFrame into chunks
+    num_chunks = 10  # You can adjust this number based on your system's capabilities
+    chunks = np.array_split(df, num_chunks)
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=32) as executor:
+        futures = [executor.submit(process_chunk, chunk, segments) for chunk in chunks]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
+
+    # Merge results
+    data_for_d3 = merge_dicts(results)
+
+            
+
     test = pd.DataFrame(data_for_d3)
     test = test.drop_duplicates(keep='first').reset_index(drop=True)
     test['keys']=test['keys'].apply(process_kv)
