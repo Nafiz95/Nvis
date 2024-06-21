@@ -3,21 +3,24 @@
 <head>
     <title>NFER VIZ</title>
     <style>
-         .flex-container {
+        .flex-container {
             display: flex; /* Using flexbox to align children side by side */
             width: 100%; /* Full width to contain both children */
+            height: 100vh; /* Full viewport height */
         }
         #heatmap-container {
             flex-grow: 1; /* Allows the heatmap container to grow and fill space */
-            overflow-x: auto; /* Enable horizontal scrolling */
+            overflow-y: auto; /* Enable vertical scrolling */
+            overflow-x: hidden; /* Disable horizontal scrolling */
             border: 1px solid #ccc; /* Visual border */
             margin: 20px; /* Space around the container */
+            max-height: calc(100vh - 40px); /* Adjust max height based on viewport height */
         }
         #info-container {
             width: 500px; /* Fixed width for the info container */
             border: 1px solid #ccc; /* Visual border */
-            padding: 20px; /* Padding inside the container */
-            margin: 20px; /* Space around the container */
+            padding: 10px; /* Padding inside the container */
+            margin: 10px; /* Space around the container */
         }
         
         svg {
@@ -84,31 +87,23 @@
             fetch('/data')
             .then(response => response.json())
             .then(data => {
-                const margin = { top: 30, right: 20, bottom: 100, left: 200 },
-                    height = 600 - margin.top - margin.bottom;
+                const margin = { top: 150, right: 20, bottom: 30, left: 150 },
+                    initialHeight = 600 - margin.top - margin.bottom,
+                    width = window.innerWidth * 0.7 - margin.left - margin.right;
 
                 function drawHeatmap(data) {
                     const container = document.getElementById('heatmap-container');
                     let containerWidth = container.clientWidth;
-                    
+
                     const timeExtent = d3.extent([...data.map(d => d.segment_start), ...data.map(d => d.segment_end)]);
-                    const widthMultiplier = 10;
+                    const zoomFactor = 10; // Increase the zoom factor as needed
                     const timeScale = d3.scaleLinear()
                         .domain(timeExtent)
-                        .range([0, (containerWidth - margin.left - margin.right) * widthMultiplier]);
+                        .range([0, initialHeight * zoomFactor]); // Adjust height based on zoom factor
 
-                    d3.select("#heatmap svg").remove();
-
-                    const svgWidth = Math.max(containerWidth, timeScale(timeExtent[1]) + margin.left + margin.right);
-                    const svg = d3.select("#heatmap").append("svg")
-                        .attr("width", svgWidth)
-                        .attr("height", height + margin.top + margin.bottom)
-                        .append("g")
-                        .attr("transform", `translate(${margin.left},${margin.top})`);
-
-                    const yScale = d3.scaleBand()
+                    const xScale = d3.scaleBand()
                         .domain(data.map(d => d.interval_name))
-                        .range([height, 0])
+                        .range([0, containerWidth - margin.left - margin.right])
                         .padding(0.1);
 
                     const colorScale = d3.scaleSequential()
@@ -118,13 +113,22 @@
                     // Tooltip div selection
                     const tooltip = d3.select("#tooltip");
 
+                    d3.select("#heatmap svg").remove();
+
+                    const svgHeight = initialHeight * zoomFactor + margin.top + margin.bottom;
+                    const svg = d3.select("#heatmap").append("svg")
+                        .attr("width", containerWidth + margin.left + margin.right)
+                        .attr("height", svgHeight) // Adjust SVG height based on zoom factor
+                        .append("g")
+                        .attr("transform", `translate(${margin.left},${margin.top})`);
+
                     svg.selectAll("rect")
                         .data(data)
                         .enter().append("rect")
-                        .attr("x", d => timeScale(d.segment_start))
-                        .attr("width", d => timeScale(d.segment_end) - timeScale(d.segment_start))
-                        .attr("y", d => yScale(d.interval_name))
-                        .attr("height", yScale.bandwidth())
+                        .attr("x", d => xScale(d.interval_name))
+                        .attr("width", xScale.bandwidth())
+                        .attr("y", d => timeScale(d.segment_start))
+                        .attr("height", d => timeScale(d.segment_end) - timeScale(d.segment_start))
                         .style("fill", d => colorScale(d.value))
                         .on("mouseover", function(event, d) {
                             tooltip.transition()
@@ -134,18 +138,18 @@
                                 .style("left", `${event.pageX + 10}px`)
                                 .style("top", `${event.pageY + 10}px`);
                             d3.select(this)
-                            .transition()
-                            .duration(100)
-                            .style("opacity", 0.8);
+                                .transition()
+                                .duration(100)
+                                .style("opacity", 0.8);
                         })
                         .on("mouseout", function() {
                             tooltip.transition()
                                 .duration(500)
                                 .style("opacity", 0);
                             d3.select(this)
-                            .transition()
-                            .duration(100)
-                            .style("opacity", 1);
+                                .transition()
+                                .duration(100)
+                                .style("opacity", 1);
                         })
                         .on("click", function(event, d) {
                             console.log("Clicked data:", d);
@@ -158,21 +162,24 @@
                                                     <strong>Values:</strong> ${d.values.join(", ")}`;
                         });
 
+                    // Move X-Axis to the top
                     const xAxis = svg.append("g")
-                        .attr("transform", `translate(0,${height})`)
-                        .call(d3.axisBottom(timeScale)
-                        // .tickFormat(d3.timeFormat("%Y-%m-%d %H:%M:%S"))
-                        );
+                        .attr("transform", `translate(0,0)`)
+                        .call(d3.axisTop(xScale))
+                        .selectAll("text")
+                        .style("text-anchor", "start")
+                        .attr("dx", "0.8em")
+                        .attr("dy", "-0.5em")
+                        .attr("transform", "rotate(-90)");
 
                     svg.append("g")
-                        .call(d3.axisLeft(yScale));
+                        .call(d3.axisLeft(timeScale));
                 }
 
                 drawHeatmap(data);
                 loader.style.display = 'none';
-                })
+            });
         });
     </script>
-    <!-- <script src="/static/heatmap.js"></script> -->
 </body>
 </html>
