@@ -91,24 +91,24 @@
                     initialHeight = 600 - margin.top - margin.bottom,
                     width = window.innerWidth * 0.7 - margin.left - margin.right;
 
-                function drawHeatmap(data) {
+                function drawHeatmap(heatmapData, eventData) {
                     const container = document.getElementById('heatmap-container');
                     let containerWidth = container.clientWidth;
 
-                    const timeExtent = d3.extent([...data.map(d => d.segment_start), ...data.map(d => d.segment_end)]);
+                    const timeExtent = d3.extent([...heatmapData.map(d => d.segment_start), ...heatmapData.map(d => d.segment_end)]);
                     const zoomFactor = 10; // Increase the zoom factor as needed
                     const timeScale = d3.scaleLinear()
                         .domain(timeExtent)
                         .range([0, initialHeight * zoomFactor]); // Adjust height based on zoom factor
 
                     const xScale = d3.scaleBand()
-                        .domain(data.map(d => d.interval_name))
+                        .domain(heatmapData.map(d => d.interval_name))
                         .range([0, containerWidth - margin.left - margin.right])
                         .padding(0.1);
 
                     const colorScale = d3.scaleSequential()
                         .interpolator(d3.interpolateGreens)
-                        .domain([0, d3.max(data, d => d.value)]);
+                        .domain([0, d3.max(heatmapData, d => d.value)]);
                     
                     // Tooltip div selection
                     const tooltip = d3.select("#tooltip");
@@ -123,7 +123,7 @@
                         .attr("transform", `translate(${margin.left},${margin.top})`);
 
                     svg.selectAll("rect")
-                        .data(data)
+                        .data(heatmapData)
                         .enter().append("rect")
                         .attr("x", d => xScale(d.interval_name))
                         .attr("width", xScale.bandwidth())
@@ -152,7 +152,7 @@
                                 .style("opacity", 1);
                         })
                         .on("click", function(event, d) {
-                            console.log("Clicked data:", d);
+                            // console.log("Clicked data:", d);
                             const infoContainer = document.getElementById('info-container');
                             infoContainer.innerHTML = `<strong>Interval:</strong> ${d.interval_name}<br>
                                                     <strong>Segment Start:</strong> ${d.segment_start}<br>
@@ -174,9 +174,26 @@
 
                     svg.append("g")
                         .call(d3.axisLeft(timeScale));
+
+                    eventData.forEach(event => {
+                        svg.append("line")
+                            .attr("x1", 0)
+                            .attr("x2", containerWidth - margin.left - margin.right)
+                            .attr("y1", timeScale(event.timestamp))
+                            .attr("y2", timeScale(event.timestamp))
+                            .style("stroke", "grey")
+                            .style("stroke-width", 1)
+                            .style("stroke-dasharray", "5,5");
+
+                        svg.append("text")
+                            .attr("x", -margin.left + 5)
+                            .attr("y", timeScale(event.timestamp) + 3)
+                            .style("fill", "grey")
+                            .text(event.id);
+                    });
                 }
 
-                drawHeatmap(data);
+                drawHeatmap(data.heatmap_data, data.event_data);
                 loader.style.display = 'none';
             });
         });
