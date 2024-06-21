@@ -12,6 +12,23 @@ from collections import defaultdict
 def process_kv(l):
     return l.split(',')
 
+def parse_new_data(file_path):
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+    
+    new_data = []
+    for line in lines:
+        parts = line.strip().split('|')
+        if len(parts) == 4:
+            id_part, timestamp_part, map_part, values_part = parts
+            timestamp = int(timestamp_part)
+            id_value = id_part.split('-')[1]  # Extract ID value
+            new_data.append({
+                "id": id_value,
+                "timestamp": timestamp
+            })
+    return new_data
+
 def process_chunk(chunk, segments):
     chunk_names_to_segments = defaultdict(list)
     data_for_d3_chunk = []
@@ -96,8 +113,13 @@ def get_data(request):
     test['keys']=test['keys'].apply(process_kv)
     test['values']=test['values'].apply(process_kv)
     data_for_d3 = test.to_dict(orient='records')
-
-    return web.Response(text=json.dumps(data_for_d3), content_type='application/json')
+    new_data = parse_new_data('lanl_10k.events')
+    response_data = {
+            "heatmap_data": data_for_d3,
+            "event_data": new_data
+        }
+    
+    return web.Response(text=json.dumps(response_data), content_type='application/json')
 
 
 # Async Socket.IO Server
