@@ -25,7 +25,9 @@ def parse_new_data(file_path):
             id_value = id_part.split('-')[1]  # Extract ID value
             new_data.append({
                 "id": id_value,
-                "timestamp": timestamp
+                "timestamp": timestamp,
+                'event_maps':map_part,
+                'event_values':values_part
             })
     return new_data
 
