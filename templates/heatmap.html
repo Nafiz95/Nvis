@@ -4,27 +4,29 @@
     <title>NFER VIZ</title>
     <style>
         .flex-container {
-            display: flex; /* Using flexbox to align children side by side */
-            width: 100%; /* Full width to contain both children */
-            height: 100vh; /* Full viewport height */
+            display: flex;
+            width: 100%;
+            height: 100vh;
         }
         #heatmap-container {
-            flex-grow: 1; /* Allows the heatmap container to grow and fill space */
-            overflow-y: auto; /* Enable vertical scrolling */
-            overflow-x: hidden; /* Disable horizontal scrolling */
-            border: 1px solid #ccc; /* Visual border */
-            margin: 20px; /* Space around the container */
-            max-height: calc(100vh - 40px); /* Adjust max height based on viewport height */
+            flex: 0 0 70%; /* Take up 70% of the width */
+            overflow-y: auto;
+            overflow-x: hidden;
+            border: 1px solid #ccc;
+            margin: 20px;
+            max-height: calc(100vh - 40px);
         }
         #info-container {
-            width: 500px; /* Fixed width for the info container */
-            border: 1px solid #ccc; /* Visual border */
-            padding: 10px; /* Padding inside the container */
-            margin: 10px; /* Space around the container */
+            flex: 0 0 30%; /* Take up 30% of the width */
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 20px;
+            background-color: #f9f9f9;
+            overflow-y: auto;
+            max-height: calc(100vh - 40px);
         }
-        
         svg {
-            display: block; /* Block display for SVG */
+            display: block;
         }
         .grid line {
             stroke: lightgrey;
@@ -41,21 +43,21 @@
             border: 1px solid #000;
             padding: 10px;
             border-radius: 3px;
-            pointer-events: none; /* Allows mouse events to pass through */
+            pointer-events: none;
             transition: opacity 0.2s;
         }
         #loader {
-            position: absolute; /* Absolute position to overlay */
-            top: 50%; /* Center vertically */
-            left: 50%; /* Center horizontally */
-            transform: translate(-50%, -50%); /* Translate to center */
-            border: 16px solid #f3f3f3; /* Light grey border */
-            border-top: 16px solid #3498db; /* Blue border */
-            border-radius: 50%; /* Rounded border */
-            width: 120px; /* Loader width */
-            height: 120px; /* Loader height */
-            animation: spin 2s linear infinite; /* Spinning animation */
-            display: none; /* Hidden by default */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 16px solid #f3f3f3;
+            border-top: 16px solid #3498db;
+            border-radius: 50%;
+            width: 120px;
+            height: 120px;
+            animation: spin 2s linear infinite;
+            display: none;
         }
         @keyframes spin {
             0% { transform: translate(-50%, -50%) rotate(0deg); }
@@ -74,128 +76,122 @@
             Click on a heatmap cell to see the details here.
         </div>
     </div>
-    <div id="tooltip"></div> <!-- Tooltip div -->
+    <div id="tooltip"></div>
     
-    <!-- Initialization of data variable from Flask -->
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             const loader = document.getElementById('loader');
             const heatmapContainer = document.getElementById('heatmap-container');
 
-            // Show loader
             loader.style.display = 'block';
             fetch('/data')
-            .then(response => response.json())
-            .then(data => {
-                const margin = { top: 150, right: 20, bottom: 30, left: 150 },
-                    initialHeight = 600 - margin.top - margin.bottom,
-                    width = window.innerWidth * 0.7 - margin.left - margin.right;
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const margin = { top: 150, right: 20, bottom: 30, left: 150 },
+                        initialHeight = 600 - margin.top - margin.bottom,
+                        width = heatmapContainer.clientWidth - margin.left - margin.right;
 
-                function drawHeatmap(heatmapData, eventData) {
-                    const container = document.getElementById('heatmap-container');
-                    let containerWidth = container.clientWidth;
+                    function drawHeatmap(heatmapData, eventData) {
+                        const timeExtent = d3.extent([...heatmapData.map(d => d.segment_start), ...heatmapData.map(d => d.segment_end)]);
+                        const zoomFactor = 10;
+                        const timeScale = d3.scaleLinear()
+                            .domain(timeExtent)
+                            .range([0, initialHeight * zoomFactor]);
 
-                    const timeExtent = d3.extent([...heatmapData.map(d => d.segment_start), ...heatmapData.map(d => d.segment_end)]);
-                    const zoomFactor = 10; // Increase the zoom factor as needed
-                    const timeScale = d3.scaleLinear()
-                        .domain(timeExtent)
-                        .range([0, initialHeight * zoomFactor]); // Adjust height based on zoom factor
+                        const xScale = d3.scaleBand()
+                            .domain(heatmapData.map(d => d.interval_name))
+                            .range([0, width])
+                            .padding(0.1);
 
-                    const xScale = d3.scaleBand()
-                        .domain(heatmapData.map(d => d.interval_name))
-                        .range([0, containerWidth - margin.left - margin.right])
-                        .padding(0.1);
+                        const colorScale = d3.scaleSequential()
+                            .interpolator(d3.interpolateGreens)
+                            .domain([0, d3.max(heatmapData, d => d.value)]);
 
-                    const colorScale = d3.scaleSequential()
-                        .interpolator(d3.interpolateGreens)
-                        .domain([0, d3.max(heatmapData, d => d.value)]);
-                    
-                    // Tooltip div selection
-                    const tooltip = d3.select("#tooltip");
+                        const tooltip = d3.select("#tooltip");
 
-                    d3.select("#heatmap svg").remove();
+                        d3.select("#heatmap svg").remove();
 
-                    const svgHeight = initialHeight * zoomFactor + margin.top + margin.bottom;
-                    const svg = d3.select("#heatmap").append("svg")
-                        .attr("width", containerWidth + margin.left + margin.right)
-                        .attr("height", svgHeight) // Adjust SVG height based on zoom factor
-                        .append("g")
-                        .attr("transform", `translate(${margin.left},${margin.top})`);
+                        const svgHeight = initialHeight * zoomFactor + margin.top + margin.bottom;
+                        const svg = d3.select("#heatmap").append("svg")
+                            .attr("width", width + margin.left + margin.right)
+                            .attr("height", svgHeight)
+                            .append("g")
+                            .attr("transform", `translate(${margin.left},${margin.top})`);
 
-                    svg.selectAll("rect")
-                        .data(heatmapData)
-                        .enter().append("rect")
-                        .attr("x", d => xScale(d.interval_name))
-                        .attr("width", xScale.bandwidth())
-                        .attr("y", d => timeScale(d.segment_start))
-                        .attr("height", d => timeScale(d.segment_end) - timeScale(d.segment_start))
-                        .style("fill", d => colorScale(d.value))
-                        .on("mouseover", function(event, d) {
-                            tooltip.transition()
-                                .duration(200)
-                                .style("opacity", 1);
-                            tooltip.html(`Interval: ${d.interval_name}<br>Count: ${d.value}`)
-                                .style("left", `${event.pageX + 10}px`)
-                                .style("top", `${event.pageY + 10}px`);
-                            d3.select(this)
-                                .transition()
-                                .duration(100)
-                                .style("opacity", 0.8);
-                        })
-                        .on("mouseout", function() {
-                            tooltip.transition()
-                                .duration(500)
-                                .style("opacity", 0);
-                            d3.select(this)
-                                .transition()
-                                .duration(100)
-                                .style("opacity", 1);
-                        })
-                        .on("click", function(event, d) {
-                            // console.log("Clicked data:", d);
-                            const infoContainer = document.getElementById('info-container');
-                            infoContainer.innerHTML = `<strong>Interval:</strong> ${d.interval_name}<br>
-                                                    <strong>Segment Start:</strong> ${d.segment_start}<br>
-                                                    <strong>Segment End:</strong> ${d.segment_end}<br>
-                                                    <strong>Value:</strong> ${d.value}<br>
-                                                    <strong>Keys:</strong> ${d.keys.join(", ")}<br>
-                                                    <strong>Values:</strong> ${d.values.join(", ")}`;
-                        });
+                        svg.selectAll("rect")
+                            .data(heatmapData)
+                            .enter().append("rect")
+                            .attr("x", d => xScale(d.interval_name))
+                            .attr("width", xScale.bandwidth())
+                            .attr("y", d => timeScale(d.segment_start))
+                            .attr("height", d => timeScale(d.segment_end) - timeScale(d.segment_start))
+                            .style("fill", d => colorScale(d.value))
+                            .on("mouseover", function(event, d) {
+                                const eventsInSegment = eventData.filter(event => event.timestamp >= d.segment_start && event.timestamp < d.segment_end);
+                                const eventIds = eventsInSegment.map(event => event.id).join(", ");
+                                tooltip.transition()
+                                    .duration(200)
+                                    .style("opacity", 1);
+                                tooltip.html(`Interval: ${d.interval_name}<br>Count: ${d.value}<br>Events: ${eventIds}`)
+                                    .style("left", `${event.pageX + 10}px`)
+                                    .style("top", `${event.pageY + 10}px`);
+                                d3.select(this)
+                                    .transition()
+                                    .duration(100)
+                                    .style("opacity", 0.8);
+                            })
+                            .on("mouseout", function() {
+                                tooltip.transition()
+                                    .duration(500)
+                                    .style("opacity", 0);
+                                d3.select(this)
+                                    .transition()
+                                    .duration(100)
+                                    .style("opacity", 1);
+                            })
+                            .on("click", function(event, d) {
+                                const infoContainer = document.getElementById('info-container');
+                                const eventsInSegment = eventData.filter(event => event.timestamp >= d.segment_start && event.timestamp < d.segment_end);
+                                const eventDetails = eventsInSegment.map(event => {
+                                    return `<strong>Event ID:</strong> ${event.id}<br>
+                                            <strong>Event Maps:</strong> ${event.event_maps}<br>
+                                            <strong>Event Values:</strong> ${event.event_values}<br>`;
+                                }).join("<br>");
+                                infoContainer.innerHTML = `<strong>Interval:</strong> ${d.interval_name}<br>
+                                                        <strong>Segment Start:</strong> ${d.segment_start}<br>
+                                                        <strong>Segment End:</strong> ${d.segment_end}<br>
+                                                        <strong>Value:</strong> ${d.value}<br>
+                                                        <strong>Keys:</strong> ${d.keys.join(", ")}<br>
+                                                        <strong>Values:</strong> ${d.values.join(", ")}<br>
+                                                        <strong>Events:</strong><br>${eventDetails}`;
+                            });
 
-                    // Move X-Axis to the top
-                    const xAxis = svg.append("g")
-                        .attr("transform", `translate(0,0)`)
-                        .call(d3.axisTop(xScale))
-                        .selectAll("text")
-                        .style("text-anchor", "start")
-                        .attr("dx", "0.8em")
-                        .attr("dy", "-0.5em")
-                        .attr("transform", "rotate(-90)");
+                        const xAxis = svg.append("g")
+                            .attr("transform", `translate(0,0)`)
+                            .call(d3.axisTop(xScale))
+                            .selectAll("text")
+                            .style("text-anchor", "start")
+                            .attr("dx", "0.8em")
+                            .attr("dy", "-0.5em")
+                            .attr("transform", "rotate(-90)");
 
-                    svg.append("g")
-                        .call(d3.axisLeft(timeScale));
+                        svg.append("g")
+                            .call(d3.axisLeft(timeScale));
+                    }
 
-                    eventData.forEach(event => {
-                        svg.append("line")
-                            .attr("x1", 0)
-                            .attr("x2", containerWidth - margin.left - margin.right)
-                            .attr("y1", timeScale(event.timestamp))
-                            .attr("y2", timeScale(event.timestamp))
-                            .style("stroke", "grey")
-                            .style("stroke-width", 1)
-                            .style("stroke-dasharray", "5,5");
-
-                        svg.append("text")
-                            .attr("x", -margin.left + 5)
-                            .attr("y", timeScale(event.timestamp) + 3)
-                            .style("fill", "grey")
-                            .text(event.id);
-                    });
-                }
-
-                drawHeatmap(data.heatmap_data, data.event_data);
-                loader.style.display = 'none';
-            });
+                    drawHeatmap(data.heatmap_data, data.event_data);
+                    loader.style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+                    loader.style.display = 'none';
+                    alert('Failed to load data. Please try again later.');
+                });
         });
     </script>
 </body>
