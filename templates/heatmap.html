@@ -63,12 +63,24 @@
             0% { transform: translate(-50%, -50%) rotate(0deg); }
             100% { transform: translate(-50%, -50%) rotate(360deg); }
         }
+        #zoom-controls {
+            position: absolute;
+            left: -10px;
+            top: 20px;
+            width: 50px;
+            height: 300px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-right: 70px;
+            background-color: #f9f9f9;
+        }
     </style>
     <script src="https://d3js.org/d3.v6.min.js"></script>
 </head>
 <body>
     <div class="flex-container">
         <div id="heatmap-container">
+            <div id="zoom-controls">Zoom Levels</div>
             <div id="heatmap"></div>
             <div id="loader"></div>
         </div>
@@ -82,6 +94,7 @@
         document.addEventListener("DOMContentLoaded", () => {
             const loader = document.getElementById('loader');
             const heatmapContainer = document.getElementById('heatmap-container');
+            const zoomControlsContainer = document.getElementById('zoom-controls');
 
             loader.style.display = 'block';
             fetch('/data')
@@ -94,94 +107,172 @@
                 .then(data => {
                     const margin = { top: 150, right: 20, bottom: 30, left: 150 },
                         initialHeight = 600 - margin.top - margin.bottom,
-                        width = heatmapContainer.clientWidth - margin.left - margin.right;
+                        width = heatmapContainer.clientWidth - margin.left - margin.right,
+                        maxZoomFactor = 20;
+
+                    let currentZoomFactor = 1;
+
+                    function getRandomColor() {
+                        const letters = '0123456789ABCDEF';
+                        let color = '#';
+                        for (let i = 0; i < 6; i++) {
+                            color += letters[Math.floor(Math.random() * 16)];
+                        }
+                        return color;
+                    }
+
+                    function assignColors(intervals) {
+                        const colors = {};
+                        intervals.forEach(interval => {
+                            colors[interval] = getRandomColor();
+                        });
+                        return colors;
+                    }
 
                     function drawHeatmap(heatmapData, eventData) {
+                        const intervals = ['events', ...new Set(heatmapData.map(d => d.interval_name))];
+                        const intervalColors = assignColors(intervals.slice(1));  // Exclude 'events' from colors
+
                         const timeExtent = d3.extent([...heatmapData.map(d => d.segment_start), ...heatmapData.map(d => d.segment_end)]);
-                        const zoomFactor = 10;
                         const timeScale = d3.scaleLinear()
                             .domain(timeExtent)
-                            .range([0, initialHeight * zoomFactor]);
+                            .range([0, initialHeight * maxZoomFactor]);
 
                         const xScale = d3.scaleBand()
-                            .domain(heatmapData.map(d => d.interval_name))
+                            .domain(intervals)
                             .range([0, width])
                             .padding(0.1);
-
-                        const colorScale = d3.scaleSequential()
-                            .interpolator(d3.interpolateGreens)
-                            .domain([0, d3.max(heatmapData, d => d.value)]);
 
                         const tooltip = d3.select("#tooltip");
 
                         d3.select("#heatmap svg").remove();
 
-                        const svgHeight = initialHeight * zoomFactor + margin.top + margin.bottom;
+                        const svgHeight = initialHeight * currentZoomFactor + margin.top + margin.bottom;
                         const svg = d3.select("#heatmap").append("svg")
                             .attr("width", width + margin.left + margin.right)
                             .attr("height", svgHeight)
                             .append("g")
                             .attr("transform", `translate(${margin.left},${margin.top})`);
 
-                        svg.selectAll("rect")
-                            .data(heatmapData)
-                            .enter().append("rect")
-                            .attr("x", d => xScale(d.interval_name))
-                            .attr("width", xScale.bandwidth())
-                            .attr("y", d => timeScale(d.segment_start))
-                            .attr("height", d => timeScale(d.segment_end) - timeScale(d.segment_start))
-                            .style("fill", d => colorScale(d.value))
-                            .on("mouseover", function(event, d) {
-                                const eventsInSegment = eventData.filter(event => event.timestamp >= d.segment_start && event.timestamp < d.segment_end);
-                                const eventIds = eventsInSegment.map(event => event.id).join(", ");
-                                tooltip.transition()
-                                    .duration(200)
-                                    .style("opacity", 1);
-                                tooltip.html(`Interval: ${d.interval_name}<br>Count: ${d.value}<br>Events: ${eventIds}`)
-                                    .style("left", `${event.pageX + 10}px`)
-                                    .style("top", `${event.pageY + 10}px`);
-                                d3.select(this)
-                                    .transition()
-                                    .duration(100)
-                                    .style("opacity", 0.8);
-                            })
-                            .on("mouseout", function() {
-                                tooltip.transition()
-                                    .duration(500)
-                                    .style("opacity", 0);
-                                d3.select(this)
-                                    .transition()
-                                    .duration(100)
-                                    .style("opacity", 1);
-                            })
+                        const heatmapGroup = svg.append("g");
+
+                        function updateHeatmap() {
+                            const zoomedTimeScale = timeScale.copy().range([0, initialHeight * currentZoomFactor]);
+                            d3.select("#heatmap svg")
+                                .attr("height", initialHeight * currentZoomFactor + margin.top + margin.bottom);
+
+                            heatmapGroup.selectAll("rect")
+                                .data(heatmapData)
+                                .join("rect")
+                                .attr("x", d => xScale(d.interval_name))
+                                .attr("width", xScale.bandwidth())
+                                .attr("y", d => zoomedTimeScale(d.segment_start))
+                                .attr("height", d => zoomedTimeScale(d.segment_end) - zoomedTimeScale(d.segment_start))
+                                .style("fill", d => intervalColors[d.interval_name])
+                                .on("mouseover", function(event, d) {
+                                    const eventsInSegment = eventData.filter(event => event.timestamp >= d.segment_start && event.timestamp < d.segment_end);
+                                    const eventIds = eventsInSegment.map(event => event.id).join(", ");
+                                    tooltip.transition()
+                                        .duration(200)
+                                        .style("opacity", 1);
+                                    tooltip.html(`Interval: ${d.interval_name}<br>Count: ${d.value}<br>Events: ${eventIds}`)
+                                        .style("left", `${event.pageX + 10}px`)
+                                        .style("top", `${event.pageY + 10}px`);
+                                    d3.select(this)
+                                        .transition()
+                                        .duration(100)
+                                        .style("opacity", 0.8);
+                                })
+                                .on("mouseout", function() {
+                                    tooltip.transition()
+                                        .duration(500)
+                                        .style("opacity", 0);
+                                    d3.select(this)
+                                        .transition()
+                                        .duration(100)
+                                        .style("opacity", 1);
+                                })
+                                .on("click", function(event, d) {
+                                    const infoContainer = document.getElementById('info-container');
+                                    const eventsInSegment = eventData.filter(event => event.timestamp >= d.segment_start && event.timestamp < d.segment_end);
+                                    const eventDetails = eventsInSegment.map(event => {
+                                        return `<strong>Event ID:</strong> ${event.id}<br>
+                                                <strong>Event Maps:</strong> ${event.event_maps}<br>
+                                                <strong>Event Values:</strong> ${event.event_values}<br>`;
+                                    }).join("<br>");
+                                    infoContainer.innerHTML = `<strong>Interval:</strong> ${d.interval_name}<br>
+                                                            <strong>Segment Start:</strong> ${d.segment_start}<br>
+                                                            <strong>Segment End:</strong> ${d.segment_end}<br>
+                                                            <strong>Value:</strong> ${d.value}<br>
+                                                            <strong>Keys:</strong> ${d.keys.join(", ")}<br>
+                                                            <strong>Values:</strong> ${d.values.join(", ")}<br>
+                                                            <strong>Events:</strong><br>${eventDetails}`;
+                                });
+
+                            // Draw event lines
+                            heatmapGroup.selectAll(".event-line")
+                                .data(eventData)
+                                .join("line")
+                                .attr("class", "event-line")
+                                .attr("x1", xScale('events'))
+                                .attr("x2", xScale('events') + xScale.bandwidth())
+                                .attr("y1", d => zoomedTimeScale(d.timestamp))
+                                .attr("y2", d => zoomedTimeScale(d.timestamp))
+                                .attr("stroke", "grey")
+                                .attr("stroke-width", 1);
+
+                            svg.select(".y-axis").remove();
+                            svg.append("g")
+                                .attr("class", "y-axis")
+                                .call(d3.axisLeft(zoomedTimeScale));
+
+                            svg.select(".x-axis").remove();
+                            svg.append("g")
+                                .attr("class", "x-axis")
+                                .attr("transform", `translate(0,0)`)
+                                .call(d3.axisTop(xScale))
+                                .selectAll("text")
+                                .style("text-anchor", "start")
+                                .attr("dx", "0.8em")
+                                .attr("dy", "-0.5em")
+                                .attr("transform", "rotate(-90)");
+                        }
+
+                        updateHeatmap();
+
+                        const zoomLevels = [1, 2, 5, 10, 20];
+                        const zoomControlSvg = d3.select("#zoom-controls").append("svg")
+                            .attr("width", 50)
+                            .attr("height", 300)
+                            .append("g")
+                            .attr("transform", `translate(20,20)`);
+
+                        zoomControlSvg.selectAll("circle")
+                            .data(zoomLevels)
+                            .enter().append("circle")
+                            .attr("cx", 15)
+                            .attr("cy", (d, i) => i * 50)
+                            .attr("r", 15)
+                            .style("fill", "#3498db")
                             .on("click", function(event, d) {
-                                const infoContainer = document.getElementById('info-container');
-                                const eventsInSegment = eventData.filter(event => event.timestamp >= d.segment_start && event.timestamp < d.segment_end);
-                                const eventDetails = eventsInSegment.map(event => {
-                                    return `<strong>Event ID:</strong> ${event.id}<br>
-                                            <strong>Event Maps:</strong> ${event.event_maps}<br>
-                                            <strong>Event Values:</strong> ${event.event_values}<br>`;
-                                }).join("<br>");
-                                infoContainer.innerHTML = `<strong>Interval:</strong> ${d.interval_name}<br>
-                                                        <strong>Segment Start:</strong> ${d.segment_start}<br>
-                                                        <strong>Segment End:</strong> ${d.segment_end}<br>
-                                                        <strong>Value:</strong> ${d.value}<br>
-                                                        <strong>Keys:</strong> ${d.keys.join(", ")}<br>
-                                                        <strong>Values:</strong> ${d.values.join(", ")}<br>
-                                                        <strong>Events:</strong><br>${eventDetails}`;
+                                currentZoomFactor = d;
+                                updateHeatmap();
                             });
 
-                        const xAxis = svg.append("g")
-                            .attr("transform", `translate(0,0)`)
-                            .call(d3.axisTop(xScale))
-                            .selectAll("text")
-                            .style("text-anchor", "start")
-                            .attr("dx", "0.8em")
-                            .attr("dy", "-0.5em")
-                            .attr("transform", "rotate(-90)");
-
-                        svg.append("g")
-                            .call(d3.axisLeft(timeScale));
+                        zoomControlSvg.selectAll("text")
+                            .data(zoomLevels)
+                            .enter().append("text")
+                            .attr("x", 15)
+                            .attr("y", (d, i) => i * 50 + 4)
+                            .attr("text-anchor", "middle")
+                            .style("fill", "#000")
+                            .style("font-weight", "bold")
+                            .text(d => `${d}x`)
+                            .style("cursor", "pointer")
+                            .on("click", function(event, d) {
+                                currentZoomFactor = d;
+                                updateHeatmap();
+                            });
                     }
 
                     drawHeatmap(data.heatmap_data, data.event_data);
