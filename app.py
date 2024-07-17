@@ -12,24 +12,44 @@ from collections import defaultdict
 def process_kv(l):
     return l.split(',')
 
-def parse_new_data(file_path):
+def parse_nfer_file(file_path):
+    spec_data = defaultdict(list)
     with open(file_path, 'r') as file:
         lines = file.readlines()
     
-    new_data = []
     for line in lines:
-        parts = line.strip().split('|')
-        if len(parts) == 4:
-            id_part, timestamp_part, map_part, values_part = parts
-            timestamp = int(timestamp_part)
-            id_value = id_part.split('-')[1]  # Extract ID value
-            new_data.append({
-                "id": id_value,
-                "timestamp": timestamp,
-                'event_maps':map_part,
-                'event_values':values_part
-            })
-    return new_data
+        line = line.strip()
+        if ":-" in line:
+            interval_name, values = line.split(":-")
+            interval_name = interval_name.strip()
+            values = values.strip()
+            spec_data[interval_name].append(values)
+    
+    return spec_data
+
+def parse_new_data(file_path):
+    try:
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+        
+        new_data = []
+        for line in lines:
+            parts = line.strip().split('|')
+            if len(parts) == 4:
+                id_part, timestamp_part, map_part, values_part = parts
+                timestamp = int(timestamp_part)
+                id_value = id_part.strip()  # Keep the full event name
+                new_data.append({
+                    "id": id_value,
+                    "timestamp": timestamp,
+                    'event_maps': map_part,
+                    'event_values': values_part
+                })
+        return new_data
+    except Exception as e:
+        print(f"Error parsing new data: {e}")
+        return []
+
 
 def process_chunk(chunk, segments):
     chunk_names_to_segments = defaultdict(list)
@@ -114,11 +134,15 @@ def get_data(request):
     test = test.drop_duplicates(keep='first').reset_index(drop=True)
     test['keys']=test['keys'].apply(process_kv)
     test['values']=test['values'].apply(process_kv)
+
     data_for_d3 = test.to_dict(orient='records')
     new_data = parse_new_data('lanl_10k.events')
+    spec_data = parse_nfer_file('lanl.nfer')
+
     response_data = {
             "heatmap_data": data_for_d3,
-            "event_data": new_data
+            "event_data": new_data,
+            "specification_data": spec_data 
         }
     
     return web.Response(text=json.dumps(response_data), content_type='application/json')
