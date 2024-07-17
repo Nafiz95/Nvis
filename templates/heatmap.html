@@ -9,7 +9,7 @@
             height: 100vh;
         }
         #heatmap-container {
-            flex: 0 0 70%; /* Take up 70% of the width */
+            flex: 0 0 70%;
             overflow-y: auto;
             overflow-x: hidden;
             border: 1px solid #ccc;
@@ -17,13 +17,14 @@
             max-height: calc(100vh - 40px);
         }
         #info-container {
-            flex: 0 0 30%; /* Take up 30% of the width */
+            flex: 0 0 30%;
             border: 1px solid #ccc;
-            padding: 10px;
+            padding: 20px;
             margin: 20px;
             background-color: #f9f9f9;
             overflow-y: auto;
             max-height: calc(100vh - 40px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
         svg {
             display: block;
@@ -74,6 +75,27 @@
             margin-right: 70px;
             background-color: #f9f9f9;
         }
+        table {
+            table-layout: auto;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            width: auto;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            white-space: nowrap;
+        }
+        hr {
+            border: 0;
+            height: 1px;
+            background: #333;
+            background-image: linear-gradient(to right, #ccc, #333, #ccc);
+            margin: 20px 0;
+        }
     </style>
     <script src="https://d3js.org/d3.v6.min.js"></script>
 </head>
@@ -85,7 +107,17 @@
             <div id="loader"></div>
         </div>
         <div id="info-container">
-            Click on a heatmap cell to see the details here.
+            <h3>Interval and Event Information</h3>
+            <div id="table-container">
+                Click on a heatmap cell to see the details here.
+            </div>
+            <hr>
+            <h3>Specification Rules</h3>
+            <label for="interval-select">Select Interval:</label>
+            <select id="interval-select">
+                <option value="" disabled selected>Select an interval</option>
+            </select>
+            <div id="interval-details"></div>
         </div>
     </div>
     <div id="tooltip"></div>
@@ -95,6 +127,9 @@
             const loader = document.getElementById('loader');
             const heatmapContainer = document.getElementById('heatmap-container');
             const zoomControlsContainer = document.getElementById('zoom-controls');
+            const intervalSelect = document.getElementById('interval-select');
+            const intervalDetails = document.getElementById('interval-details');
+            const tableContainer = document.getElementById('table-container');
 
             loader.style.display = 'block';
             fetch('/data')
@@ -131,7 +166,7 @@
 
                     function drawHeatmap(heatmapData, eventData) {
                         const intervals = ['events', ...new Set(heatmapData.map(d => d.interval_name))];
-                        const intervalColors = assignColors(intervals.slice(1));  // Exclude 'events' from colors
+                        const intervalColors = assignColors(intervals.slice(1));
 
                         const timeExtent = d3.extent([...heatmapData.map(d => d.segment_start), ...heatmapData.map(d => d.segment_end)]);
                         const timeScale = d3.scaleLinear()
@@ -193,23 +228,46 @@
                                         .style("opacity", 1);
                                 })
                                 .on("click", function(event, d) {
-                                    const infoContainer = document.getElementById('info-container');
                                     const eventsInSegment = eventData.filter(event => event.timestamp >= d.segment_start && event.timestamp < d.segment_end);
-                                    const eventDetails = eventsInSegment.map(event => {
-                                        return `<strong>Event ID:</strong> ${event.id}<br>
-                                                <strong>Event Maps:</strong> ${event.event_maps}<br>
-                                                <strong>Event Values:</strong> ${event.event_values}<br>`;
-                                    }).join("<br>");
-                                    infoContainer.innerHTML = `<strong>Interval:</strong> ${d.interval_name}<br>
-                                                            <strong>Segment Start:</strong> ${d.segment_start}<br>
-                                                            <strong>Segment End:</strong> ${d.segment_end}<br>
-                                                            <strong>Value:</strong> ${d.value}<br>
-                                                            <strong>Keys:</strong> ${d.keys.join(", ")}<br>
-                                                            <strong>Values:</strong> ${d.values.join(", ")}<br>
-                                                            <strong>Events:</strong><br>${eventDetails}`;
+                                    
+                                    let intervalTable = `<table>
+                                        <tr>
+                                            <th>Interval Name</th>
+                                            <th>Segment Start</th>
+                                            <th>Segment End</th>
+                                            <th>Keys</th>
+                                            <th>Values</th>
+                                        </tr>
+                                        <tr>
+                                            <td>${d.interval_name}</td>
+                                            <td>${d.segment_start}</td>
+                                            <td>${d.segment_end}</td>
+                                            <td>${d.keys.join(", ")}</td>
+                                            <td>${d.values.join(", ")}</td>
+                                        </tr>
+                                    </table>`;
+
+                                    let eventsTable = `<table>
+                                        <tr>
+                                            <th>Event ID</th>
+                                            <th>Timestamp</th>
+                                            <th>Maps</th>
+                                            <th>Values</th>
+                                        </tr>`;
+                                    eventsInSegment.forEach(event => {
+                                        eventsTable += `<tr>
+                                            <td>${event.id}</td>
+                                            <td>${event.timestamp}</td>
+                                            <td>${event.event_maps}</td>
+                                            <td>${event.event_values}</td>
+                                        </tr>`;
+                                    });
+                                    eventsTable += `</table>`;
+
+                                    // Insert tables into tableContainer without removing dropdown
+                                    tableContainer.innerHTML = intervalTable + eventsTable;
                                 });
 
-                            // Draw event lines
                             heatmapGroup.selectAll(".event-line")
                                 .data(eventData)
                                 .join("line")
@@ -276,6 +334,22 @@
                     }
 
                     drawHeatmap(data.heatmap_data, data.event_data);
+                    
+                    // Populate dropdown with interval names and set up event listener
+                    const specData = data.specification_data;
+                    for (let intervalName in specData) {
+                        const option = document.createElement('option');
+                        option.value = intervalName;
+                        option.textContent = intervalName;
+                        intervalSelect.appendChild(option);
+                    }
+
+                    intervalSelect.addEventListener('change', function() {
+                        const selectedInterval = intervalSelect.value;
+                        const details = specData[selectedInterval];
+                        intervalDetails.innerHTML = `<h3>${selectedInterval}</h3><ul>${details.map(d => `<li>${d}</li>`).join('')}</ul>`;
+                    });
+
                     loader.style.display = 'none';
                 })
                 .catch(error => {
