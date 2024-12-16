@@ -135,6 +135,7 @@ def get_data(request):
     test['keys']=test['keys'].apply(process_kv)
     test['values']=test['values'].apply(process_kv)
 
+    # don't convert to a dict!!!
     data_for_d3 = test.to_dict(orient='records')
     new_data = parse_new_data('lanl_10k.events')
     spec_data = parse_nfer_file('lanl.nfer')
