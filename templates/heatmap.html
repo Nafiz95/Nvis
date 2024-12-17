@@ -282,7 +282,7 @@
                             svg.select(".y-axis").remove();
                             svg.append("g")
                                 .attr("class", "y-axis")
-                                .call(d3.axisLeft(zoomedTimeScale));
+                                .call(d3.axisLeft(zoomedTimeScale).tickFormat(d3.timeFormat("%Y-%m-%d %H:%M:%S")));
 
                             svg.select(".x-axis").remove();
                             svg.append("g")
