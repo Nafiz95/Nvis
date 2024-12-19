@@ -165,13 +165,21 @@
                     }
 
                     function drawHeatmap(heatmapData, eventData) {
-                        const intervals = ['events', ...new Set(heatmapData.map(d => d.interval_name))];
-                        const intervalColors = assignColors(intervals.slice(1));
+                        // const intervals = ['events', ...new Set(heatmapData.map(d => d.interval_name))];
+                        // const intervalColors = assignColors(intervals.slice(1));
+
+                        //default sorting: Lexicographic order
+                        const intervals = ['events', ...Array.from(new Set(heatmapData.map(d => d.interval_name))).sort()];
+                        const intervalColors = intervals.reduce((colors, interval) => {
+                            colors[interval] = d3.schemeCategory10[intervals.indexOf(interval) % 10];
+                            return colors;
+                        }, {});
 
                         const timeExtent = d3.extent([...heatmapData.map(d => d.segment_start), ...heatmapData.map(d => d.segment_end)]);
                         const timeScale = d3.scaleLinear()
                             .domain(timeExtent)
                             .range([0, initialHeight * maxZoomFactor]);
+
 
                         const xScale = d3.scaleBand()
                             .domain(intervals)
