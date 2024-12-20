@@ -35,15 +35,15 @@ def parse_new_data(file_path):
         new_data = []
         for line in lines:
             parts = line.strip().split('|')
-            if len(parts) == 4:
-                id_part, timestamp_part, map_part, values_part = parts
+            if len(parts) == 2:
+                id_part, timestamp_part = parts
                 timestamp = int(timestamp_part)
                 id_value = id_part.strip()  # Keep the full event name
                 new_data.append({
                     "id": id_value,
                     "timestamp": timestamp,
-                    'event_maps': map_part,
-                    'event_values': values_part
+                    # 'event_maps': map_part,
+                    # 'event_values': values_part
                 })
         return new_data
     except Exception as e:
@@ -107,8 +107,12 @@ def merge_dicts(dicts):
 def get_data(request):
     column_names = ['interval_name', 'interval_begin', 'interval_end', 'keys', 'values']
 
+    events_file_name = './test_cases/heat_pump_partial/event_traces_combined.events'
+    rules_file_name = './test_cases/heat_pump_partial/rules_s30_c09_alg_kernelCPD_model_linear_min_size_300_penalty_50_jump_5.nfer'
+    intervals_file_name = './test_cases/heat_pump_partial/intervals_s30_c09_alg_kernelCPD_model_linear_min_size_300_penalty_50_jump_5.txt'
+    
     # Read the file using read_csv with pipe '|' as the separator
-    df = pd.read_csv('lanl_intervals', sep='|', header=None, names=column_names)
+    df = pd.read_csv(intervals_file_name, sep='|', header=None, names=column_names)
     interval_points = np.sort(np.unique(df[['interval_begin', 'interval_end']].values.ravel()))
 
     # Create an efficient mapping from interval points to index to speed up searches
@@ -137,8 +141,8 @@ def get_data(request):
 
     # don't convert to a dict!!!
     data_for_d3 = test.to_dict(orient='records')
-    new_data = parse_new_data('lanl_10k.events')
-    spec_data = parse_nfer_file('lanl.nfer')
+    new_data = parse_new_data(events_file_name)
+    spec_data = parse_nfer_file(rules_file_name)
 
     response_data = {
             "heatmap_data": data_for_d3,
