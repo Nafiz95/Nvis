@@ -35,15 +35,15 @@ def parse_new_data(file_path):
         new_data = []
         for line in lines:
             parts = line.strip().split('|')
-            if len(parts) == 4:
-                id_part, timestamp_part, map_part, values_part = parts
+            if len(parts) == 2:
+                id_part, timestamp_part = parts
                 timestamp = int(timestamp_part)
                 id_value = id_part.strip()  # Keep the full event name
                 new_data.append({
                     "id": id_value,
                     "timestamp": timestamp,
-                    'event_maps': map_part,
-                    'event_values': values_part
+                    # 'event_maps': map_part,
+                    # 'event_values': values_part
                 })
         return new_data
     except Exception as e:

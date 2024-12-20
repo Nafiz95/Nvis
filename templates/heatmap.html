@@ -164,6 +164,7 @@
                         return colors;
                     }
 
+
                     function drawHeatmap(heatmapData, eventData) {
                         // const intervals = ['events', ...new Set(heatmapData.map(d => d.interval_name))];
                         // const intervalColors = assignColors(intervals.slice(1));
@@ -179,7 +180,6 @@
                         const timeScale = d3.scaleLinear()
                             .domain(timeExtent)
                             .range([0, initialHeight * maxZoomFactor]);
-
 
                         const xScale = d3.scaleBand()
                             .domain(intervals)
@@ -290,7 +290,7 @@
                             svg.select(".y-axis").remove();
                             svg.append("g")
                                 .attr("class", "y-axis")
-                                .call(d3.axisLeft(zoomedTimeScale).tickFormat(d3.timeFormat("%Y-%m-%d %H:%M:%S")));
+                                .call(d3.axisLeft(zoomedTimeScale).tickFormat(d => d3.timeFormat("%Y-%m-%d %H:%M:%S")(d * 1000)));
 
                             svg.select(".x-axis").remove();
                             svg.append("g")
@@ -298,10 +298,12 @@
                                 .attr("transform", `translate(0,0)`)
                                 .call(d3.axisTop(xScale))
                                 .selectAll("text")
+                                
                                 .style("text-anchor", "start")
                                 .attr("dx", "0.8em")
-                                .attr("dy", "-0.5em")
+                                .attr("dy", "1em")
                                 .attr("transform", "rotate(-90)");
+
                         }
 
                         updateHeatmap();
