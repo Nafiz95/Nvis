@@ -57,7 +57,7 @@ The tool is tested on Windows and Linux (Ubuntu distribution) operating systems.
 
 Provide example commands or scripts to run the project.
 ```bash
-python main.py
+python app.py
 ```
 </span>
 </div>
