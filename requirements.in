@@ -1,0 +1,4 @@
+aiohttp==3.10.10
+numpy==1.26.4
+pandas==2.2.2
+python-socketio==5.11.4
